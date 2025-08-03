@@ -14,6 +14,7 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [riddleHistory, setRiddleHistory] = useState<string[]>([]);
 
   // Use a stable reference for the AI client
   const [aiClient] = useState(() => new GoogleGenAI({ apiKey: process.env.API_KEY }));
@@ -26,9 +27,16 @@ const App = () => {
     setRiddle(null);
     
     try {
+      let prompt = "Gib mir ein zufälliges, kurzes, klassisches deutsches Rätsel. Gib mir NUR das Rätsel und die Antwort im JSON-Format. Das JSON-Objekt muss ein 'raetsel' Feld (das Rätsel selbst) und ein 'antwort' Feld (die Lösung des Rätsels) haben.";
+      
+      if (riddleHistory.length > 0) {
+        const historyString = riddleHistory.map(r => `"${r}"`).join(", ");
+        prompt += `\n\nWICHTIG: Das neue Rätsel darf keines der folgenden sein, die bereits gestellt wurden: [${historyString}]. Gib mir ein komplett anderes.`;
+      }
+
       const response = await aiClient.models.generateContent({
         model: "gemini-2.5-flash",
-        contents: "Gib mir ein zufälliges, kurzes, klassisches deutsches Rätsel. Gib mir NUR das Rätsel und die Antwort im JSON-Format. Das JSON-Objekt muss ein 'raetsel' Feld (das Rätsel selbst) und ein 'antwort' Feld (die Lösung des Rätsels) haben.",
+        contents: prompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -53,6 +61,8 @@ const App = () => {
       if (jsonResponse.raetsel && jsonResponse.antwort) {
         setRiddle(jsonResponse.raetsel);
         setAnswer(jsonResponse.antwort);
+        // Add new riddle to history, keeping only the last 10 to prevent the prompt from getting too long
+        setRiddleHistory(prev => [...prev.slice(-9), jsonResponse.raetsel]);
       } else {
         throw new Error("Ungültiges JSON-Format von der API erhalten.");
       }
@@ -62,11 +72,17 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [aiClient]);
+  }, [aiClient, riddleHistory]);
 
   useEffect(() => {
+    // On the initial mount, we call the fetch function.
+    // We disable the exhaustive-deps lint rule for this line because
+    // including fetchRiddle would cause an infinite loop, as fetchRiddle
+    // depends on riddleHistory, which it also updates.
+    // We only want this effect to run ONCE when the component mounts.
     fetchRiddle();
-  }, [fetchRiddle]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleGuessSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
