@@ -1,4 +1,5 @@
 {
-  "name": "Rätselspiel",
-  "description": "Ein lustiges Rätselspiel, erstellt mit der Gemini API."
+  "name": "Rätsel Spiel",
+  "description": "Ein lustiges Spiel, bei dem du Rätsel mit Hilfe von KI löst.",
+  "requestFramePermissions": []
 }
