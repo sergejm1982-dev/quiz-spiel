@@ -6,6 +6,26 @@ import { GoogleGenAI, Type } from "@google/genai";
 import React, { useState, useEffect, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 
+// Der API-Schlüssel wird von der Umgebung als process.env.API_KEY bereitgestellt.
+// Fehlerbehandlung für den Fall, dass der Schlüssel fehlt.
+if (!process.env.API_KEY) {
+  const container = document.getElementById("root");
+  if (container) {
+    container.innerHTML = `
+      <div style="font-family: sans-serif; padding: 2rem; text-align: center; color: #333;">
+        <h1>Fehler: API-Schlüssel fehlt</h1>
+        <p>Der Google Gemini API-Schlüssel wurde nicht gefunden.</p>
+        <p>Bitte stellen Sie sicher, dass die Umgebungsvariable <code>API_KEY</code> korrekt konfiguriert ist.</p>
+      </div>
+    `;
+  }
+  // Stoppt die weitere Ausführung des Skripts.
+  throw new Error("API_KEY environment variable not set.");
+}
+
+// Initialisieren Sie den Google AI-Client mit dem API-Schlüssel.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
 const App = () => {
   const [riddle, setRiddle] = useState<string | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -15,9 +35,6 @@ const App = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [riddleHistory, setRiddleHistory] = useState<string[]>([]);
-
-  // Use a stable reference for the AI client
-  const [aiClient] = useState(() => new GoogleGenAI({ apiKey: process.env.API_KEY }));
 
   const fetchRiddle = useCallback(async () => {
     setIsLoading(true);
@@ -34,7 +51,7 @@ const App = () => {
         prompt += `\n\nWICHTIG: Das neue Rätsel darf keines der folgenden sein, die bereits gestellt wurden: [${historyString}]. Gib mir ein komplett anderes.`;
       }
 
-      const response = await aiClient.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt,
         config: {
@@ -61,7 +78,7 @@ const App = () => {
       if (jsonResponse.raetsel && jsonResponse.antwort) {
         setRiddle(jsonResponse.raetsel);
         setAnswer(jsonResponse.antwort);
-        // Add new riddle to history, keeping only the last 10 to prevent the prompt from getting too long
+        // Neues Rätsel zur Historie hinzufügen und nur die letzten 10 behalten
         setRiddleHistory(prev => [...prev.slice(-9), jsonResponse.raetsel]);
       } else {
         throw new Error("Ungültiges JSON-Format von der API erhalten.");
@@ -72,14 +89,13 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [aiClient, riddleHistory]);
+  }, [riddleHistory]);
 
   useEffect(() => {
-    // On the initial mount, we call the fetch function.
-    // We disable the exhaustive-deps lint rule for this line because
-    // including fetchRiddle would cause an infinite loop, as fetchRiddle
-    // depends on riddleHistory, which it also updates.
-    // We only want this effect to run ONCE when the component mounts.
+    // Ruft beim ersten Laden der Komponente ein Rätsel ab.
+    // Die eslint-disable-Regel ist hier notwendig, da fetchRiddle von riddleHistory
+    // abhängt, das es selbst aktualisiert, was zu einer Endlosschleife führen würde.
+    // Dieser Effekt soll nur EINMAL beim ersten Rendern ausgeführt werden.
     fetchRiddle();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -102,7 +118,7 @@ const App = () => {
         Ist die Antwort des Benutzers korrekt? Antworte NUR mit einem JSON-Objekt, das einen einzigen booleschen Schlüssel 'is_correct' hat.
       `;
       
-      const response = await aiClient.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: verificationPrompt,
         config: {
