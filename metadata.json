@@ -1,5 +1,6 @@
 {
   "name": "Rätsel Spiel",
   "description": "Ein lustiges Spiel, bei dem du Rätsel mit Hilfe von KI löst.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "prompt": ""
 }

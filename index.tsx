@@ -6,6 +6,19 @@ import { GoogleGenAI, Type } from "@google/genai";
 import React, { useState, useEffect, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 
+const categoryMap: { [key: string]: string } = {
+  lustig: 'lustiges',
+  mathematisch: 'mathematisches',
+  detektiv: 'Detektiv-',
+  mysteriös: 'mysteriöses',
+};
+const categoryLabels: { [key: string]: string } = {
+  lustig: 'Lustig',
+  mathematisch: 'Mathematisch',
+  detektiv: 'Detektiv',
+  mysteriös: 'Mysteriös',
+};
+
 const App = () => {
   const [riddle, setRiddle] = useState<string | null>(null);
   const [answer, setAnswer] = useState<string | null>(null);
@@ -15,6 +28,7 @@ const App = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [riddleHistory, setRiddleHistory] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState('lustig');
 
   // Use a stable reference for the AI client
   const [aiClient] = useState(() => new GoogleGenAI({ apiKey: process.env.API_KEY }));
@@ -27,7 +41,8 @@ const App = () => {
     setRiddle(null);
     
     try {
-      let prompt = "Gib mir ein zufälliges, kurzes, klassisches deutsches Rätsel. Gib mir NUR das Rätsel und die Antwort im JSON-Format. Das JSON-Objekt muss ein 'raetsel' Feld (das Rätsel selbst) und ein 'antwort' Feld (die Lösung des Rätsels) haben.";
+      const categoryDescription = categoryMap[selectedCategory] || 'klassisches';
+      let prompt = `Gib mir ein zufälliges, kurzes, ${categoryDescription} deutsches Rätsel. Gib mir NUR das Rätsel und die Antwort im JSON-Format. Das JSON-Objekt muss ein 'raetsel' Feld (das Rätsel selbst) und ein 'antwort' Feld (die Lösung des Rätsels) haben.`;
       
       if (riddleHistory.length > 0) {
         const historyString = riddleHistory.map(r => `"${r}"`).join(", ");
@@ -72,7 +87,7 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [aiClient, riddleHistory]);
+  }, [aiClient, riddleHistory, selectedCategory]);
 
   useEffect(() => {
     // On the initial mount, we call the fetch function.
@@ -139,6 +154,24 @@ const App = () => {
   return (
     <div className="container">
       <h1>Rätsel Spiel</h1>
+
+      <div className="category-selector" role="radiogroup" aria-labelledby="category-label">
+        <span id="category-label" className="sr-only">Rätselkategorie auswählen</span>
+        {Object.keys(categoryLabels).map((key) => (
+          <React.Fragment key={key}>
+            <input
+              type="radio"
+              id={key}
+              name="category"
+              value={key}
+              checked={selectedCategory === key}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              disabled={isLoading}
+            />
+            <label htmlFor={key}>{categoryLabels[key]}</label>
+          </React.Fragment>
+        ))}
+      </div>
       
       {isLoading && <div className="loader">Lade neues Rätsel...</div>}
       
