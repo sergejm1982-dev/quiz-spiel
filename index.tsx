@@ -9,14 +9,14 @@ import { createRoot } from "react-dom/client";
 const categoryMap: { [key: string]: string } = {
   lustig: 'lustiges',
   mathematisch: 'mathematisches',
-  detektiv: 'Detektiv-',
-  mysteriös: 'mysteriöses',
+  detektiv: 'Detektiv (man kann aus zwei Alternativen auswählen)',
+  mysteriös: 'seltsam verrücktes, aber mit Hinweisen, das man fast herauslesen kann',
 };
 const categoryLabels: { [key: string]: string } = {
   lustig: 'Lustig',
   mathematisch: 'Mathematisch',
   detektiv: 'Detektiv',
-  mysteriös: 'Mysteriös',
+  mysteriös: 'Mysteriös und seltsam',
 };
 
 const App = () => {
@@ -41,8 +41,8 @@ const App = () => {
     setRiddle(null);
     
     try {
-      const categoryDescription = categoryMap[selectedCategory] || 'klassisches';
-      let prompt = `Gib mir ein zufälliges, kurzes, ${categoryDescription} deutsches Rätsel. Gib mir NUR das Rätsel und die Antwort im JSON-Format. Das JSON-Objekt muss ein 'raetsel' Feld (das Rätsel selbst) und ein 'antwort' Feld (die Lösung des Rätsels) haben.`;
+      const categoryDescription = categoryMap[selectedCategory];
+      let prompt = `Gib mir ein zufälliges, kurzes, ${categoryDescription}  Rätsel. Gib mir NUR das Rätsel und die Antwort im JSON-Format. Das JSON-Objekt muss ein 'raetsel' Feld (das Rätsel selbst) und ein 'antwort' Feld (die Lösung des Rätsels) haben.`;
       
       if (riddleHistory.length > 0) {
         const historyString = riddleHistory.map(r => `"${r}"`).join(", ");
