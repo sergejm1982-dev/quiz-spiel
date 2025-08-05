@@ -3,21 +3,72 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { GoogleGenAI, Type } from "@google/genai";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const categoryMap: { [key: string]: string } = {
   lustig: 'lustiges',
-  mathematisch: 'mathematisches',
-  detektiv: 'Detektiv (man kann aus zwei Alternativen auswählen)',
-  mysteriös: 'seltsam verrücktes, aber mit Hinweisen, das man fast herauslesen kann',
+  mathematisch: 'mathematisches(bei falsch soll die Antwort begründet sein)',
+  detektiv: 'Detektiv (man kann aus zwei oder drei Alternativen auswählen. Die Antwort soll zeigen warum es richtig oder falsch ist)',
+  mysteriös: 'seltsam verrücktes (aber mit Hinweisen, man kann es fast herauslesen was die Antwort ist)',
+  minecraft: 'über Minecraft',
 };
 const categoryLabels: { [key: string]: string } = {
   lustig: 'Lustig',
   mathematisch: 'Mathematisch',
   detektiv: 'Detektiv',
   mysteriös: 'Mysteriös und seltsam',
+  minecraft: 'Minecraft',
 };
+
+// Helper function to write a string to a DataView
+function writeString(view: DataView, offset: number, str: string) {
+  for (let i = 0; i < str.length; i++) {
+    view.setUint8(offset + i, str.charCodeAt(i));
+  }
+}
+
+// Helper function to create a WAV file buffer from raw PCM data.
+// The API returns raw 16-bit PCM audio data at a 24000 Hz sample rate.
+function createWavBuffer(pcmData: ArrayBuffer): ArrayBuffer {
+    const sampleRate = 24000;
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const dataSize = pcmData.byteLength;
+    const blockAlign = (numChannels * bitsPerSample) / 8;
+    const byteRate = sampleRate * blockAlign;
+    const headerSize = 44;
+
+    const buffer = new ArrayBuffer(headerSize + dataSize);
+    const view = new DataView(buffer);
+
+    // RIFF header
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true); // true for little-endian
+    writeString(view, 8, 'WAVE');
+
+    // fmt subchunk
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true); // subchunk1 size (16 for PCM)
+    view.setUint16(20, 1, true); // audio format (1 for PCM)
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+
+    // data subchunk
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    // Write PCM data
+    const pcmView = new Uint8Array(pcmData);
+    const wavView = new Uint8Array(buffer, headerSize);
+    wavView.set(pcmView);
+
+    return buffer;
+}
+
 
 const App = () => {
   const [riddle, setRiddle] = useState<string | null>(null);
@@ -29,11 +80,96 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [riddleHistory, setRiddleHistory] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('lustig');
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // Use a stable reference for the AI client
   const [aiClient] = useState(() => new GoogleGenAI({ apiKey: process.env.API_KEY }));
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [audioSource, setAudioSource] = useState<AudioBufferSourceNode | null>(null);
 
-  const fetchRiddle = useCallback(async () => {
+  const stopSpeaking = React.useCallback(() => {
+    if (audioSource) {
+      audioSource.stop();
+      audioSource.disconnect();
+      setAudioSource(null);
+    }
+    // Also cancel browser speech synthesis as a fallback
+    if (typeof window.speechSynthesis !== 'undefined' && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  }, [audioSource]);
+
+
+  const speak = React.useCallback(async (text: string) => {
+    if (!text || isSpeaking) return;
+
+    let localAudioContext = audioContext;
+    if (!localAudioContext) {
+      try {
+        localAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        setAudioContext(localAudioContext);
+      } catch (e) {
+        console.error("Web Audio API is not supported in this browser.", e);
+        setError("Dein Browser unterstützt die Audio-Wiedergabe nicht.");
+        return;
+      }
+    }
+    
+    if (localAudioContext.state === 'suspended') {
+        await localAudioContext.resume();
+    }
+
+    stopSpeaking();
+    setIsSpeaking(true);
+
+    try {
+      const response = await aiClient.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: text }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+        },
+      });
+
+      const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+      if (!audioData || typeof audioData !== 'string') {
+        throw new Error("Keine gültigen Audiodaten in der API-Antwort gefunden.");
+      }
+
+      const binaryString = window.atob(audioData);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      const wavBuffer = createWavBuffer(bytes.buffer);
+      
+      const decodedAudioData = await localAudioContext.decodeAudioData(wavBuffer);
+
+      const source = localAudioContext.createBufferSource();
+      source.buffer = decodedAudioData;
+      source.connect(localAudioContext.destination);
+      source.start(0);
+
+      source.onended = () => {
+        setIsSpeaking(false);
+        setAudioSource(null);
+      };
+
+      setAudioSource(source);
+
+    } catch (e) {
+      console.error("Fehler bei der Sprachsynthese:", e);
+      setError("Entschuldigung, ein Fehler bei der Sprachsynthese ist aufgetreten.");
+      setIsSpeaking(false);
+    }
+  }, [aiClient, audioContext, isSpeaking, stopSpeaking]);
+
+  const fetchRiddle = React.useCallback(async () => {
+    stopSpeaking();
+      
     setIsLoading(true);
     setError(null);
     setFeedback(null);
@@ -76,7 +212,6 @@ const App = () => {
       if (jsonResponse.raetsel && jsonResponse.antwort) {
         setRiddle(jsonResponse.raetsel);
         setAnswer(jsonResponse.antwort);
-        // Add new riddle to history, keeping only the last 10 to prevent the prompt from getting too long
         setRiddleHistory(prev => [...prev.slice(-9), jsonResponse.raetsel]);
       } else {
         throw new Error("Ungültiges JSON-Format von der API erhalten.");
@@ -87,15 +222,14 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [aiClient, riddleHistory, selectedCategory]);
+  }, [aiClient, riddleHistory, selectedCategory, stopSpeaking]);
 
-  useEffect(() => {
-    // On the initial mount, we call the fetch function.
-    // We disable the exhaustive-deps lint rule for this line because
-    // including fetchRiddle would cause an infinite loop, as fetchRiddle
-    // depends on riddleHistory, which it also updates.
-    // We only want this effect to run ONCE when the component mounts.
+  React.useEffect(() => {
     fetchRiddle();
+    
+    return () => {
+      stopSpeaking();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -136,18 +270,32 @@ const App = () => {
       });
 
       const result = JSON.parse(response.text);
+      let feedbackMessage: string;
       
       if (result.is_correct) {
-        setFeedback({ message: "Richtig! Gut gemacht!", type: 'success' });
+        feedbackMessage = "Richtig! Gut gemacht!";
+        setFeedback({ message: feedbackMessage, type: 'success' });
       } else {
-        setFeedback({ message: `Leider falsch. Die richtige Antwort war: "${answer}"`, type: 'error' });
+        feedbackMessage = `Leider falsch. Die richtige Antwort war: "${answer}"`;
+        setFeedback({ message: feedbackMessage, type: 'error' });
       }
+      speak(feedbackMessage);
 
     } catch (e) {
       console.error("Fehler bei der Überprüfung der Antwort:", e);
-      setFeedback({ message: 'Entschuldigung, die Antwort konnte nicht überprüft werden. Versuche es erneut.', type: 'error' });
+      const errorMessage = 'Entschuldigung, die Antwort konnte nicht überprüft werden. Versuche es erneut.';
+      setFeedback({ message: errorMessage, type: 'error' });
+      speak(errorMessage);
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  const handleSpeak = () => {
+    if (isSpeaking) {
+      stopSpeaking();
+    } else if (riddle) {
+      speak(riddle);
     }
   };
 
@@ -181,6 +329,21 @@ const App = () => {
         <>
           <div className="riddle-box" aria-live="polite">
             <p>{riddle}</p>
+            <button 
+              onClick={handleSpeak} 
+              className="speak-button" 
+              aria-label={isSpeaking ? "Vorlesen stoppen" : "Rätsel vorlesen"}
+              title={isSpeaking ? "Vorlesen stoppen" : "Rätsel vorlesen"}
+              disabled={isLoading || isVerifying}
+            >
+              {isSpeaking ? (
+                <svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M8 8h8v8H8z" opacity=".3"/><path d="M6 18h12V6H6v12zM8 8h8v8H8V8z"/></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" >
+                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                </svg>
+              )}
+            </button>
           </div>
           
           <form onSubmit={handleGuessSubmit}>
@@ -191,9 +354,9 @@ const App = () => {
                 onChange={(e) => setUserGuess(e.target.value)}
                 placeholder="Deine Antwort..."
                 aria-label="Riddle answer input"
-                disabled={!!feedback || isVerifying}
+                disabled={!!feedback || isVerifying || isSpeaking}
               />
-              <button type="submit" className="primary" disabled={!userGuess.trim() || !!feedback || isVerifying}>
+              <button type="submit" className="primary" disabled={!userGuess.trim() || !!feedback || isVerifying || isSpeaking}>
                 {isVerifying ? 'Prüfe...' : 'Raten'}
               </button>
             </div>
@@ -206,7 +369,7 @@ const App = () => {
           )}
 
           <div className="button-container">
-            <button onClick={fetchRiddle} className="secondary" disabled={isLoading}>
+            <button onClick={() => fetchRiddle()} className="secondary" disabled={isLoading || isSpeaking}>
               Neues Rätsel
             </button>
           </div>

@@ -109,6 +109,10 @@ h1 {
 }
 
 .riddle-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   background-color: var(--primary-bg);
   border-left: 5px solid var(--accent-color);
   padding: 1.5rem;
@@ -123,6 +127,41 @@ h1 {
   line-height: 1.6;
   color: var(--secondary-text);
   white-space: pre-wrap; /* Preserve line breaks from the riddle */
+  flex-grow: 1;
+}
+
+.speak-button {
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--secondary-text);
+  flex-shrink: 0;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.speak-button:hover:not(:disabled) {
+  background-color: #dee2e6;
+  color: var(--accent-color);
+}
+
+.speak-button:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.speak-button svg {
+  width: 24px;
+  height: 24px;
+}
+
+.speak-button:disabled {
+  color: #adb5bd;
+  cursor: not-allowed;
 }
 
 .form-group {
@@ -176,6 +215,12 @@ button.secondary:hover {
 button:disabled {
   background-color: #cccccc;
   cursor: not-allowed;
+}
+
+/* Ensure speak button doesn't get the generic disabled background */
+.speak-button:disabled {
+  background-color: transparent;
+  color: #adb5bd;
 }
 
 button:active {
