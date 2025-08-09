@@ -56,14 +56,30 @@ h1 {
   border-width: 0;
 }
 
+.language-selector,
 .category-selector {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   gap: 0.5rem 0.75rem;
   margin-bottom: 2rem;
 }
 
+.language-selector {
+  margin-bottom: 1rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.selector-title {
+    font-weight: 500;
+    color: var(--secondary-text);
+    margin-right: 0.5rem;
+}
+
+
+.language-selector input[type="radio"],
 .category-selector input[type="radio"] {
   /* Hide the actual radio button */
   opacity: 0;
@@ -71,6 +87,7 @@ h1 {
   width: 0;
 }
 
+.language-selector label,
 .category-selector label {
   display: inline-block;
   background-color: var(--primary-bg);
@@ -85,22 +102,26 @@ h1 {
   transition: all 0.2s ease-in-out;
 }
 
+.language-selector input[type="radio"]:hover + label,
 .category-selector input[type="radio"]:hover + label {
   border-color: var(--accent-color);
   color: var(--accent-color);
 }
 
+.language-selector input[type="radio"]:focus + label,
 .category-selector input[type="radio"]:focus + label {
   outline: none;
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
 }
 
+.language-selector input[type="radio"]:checked + label,
 .category-selector input[type="radio"]:checked + label {
   background-color: var(--accent-color);
   color: white;
   border-color: var(--accent-color);
 }
 
+.language-selector input[type="radio"]:disabled + label,
 .category-selector input[type="radio"]:disabled + label {
     background-color: #e9ecef;
     color: #adb5bd;
